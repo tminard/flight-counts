@@ -1,12 +1,12 @@
-download-inc-5000
+Flight Count
 =================
 
-Script to download the any available year of the inc5000 list and export to CSV files.
+Script to download the any available year of the WSJ flight list and export to CSV files.
 
-You control which year(s) to download via arguments.
+Takes a CSV input file, scans for tail numbers, and then passes those into a url and parses the resulting count.
 
-Ex:
+For example
 
-perl download_inc5000.pl 2009
+    $ perl flight-count.pl Tail.csv
 
-perl download_inc5000.pl 2009 2012
+Forked/modified from @tminard
