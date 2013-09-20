@@ -8,6 +8,10 @@ use Mojo::DOM;
 use Mojo::Collection;
 use File::Fetch;
 use File::Copy qw(move);
+use JSON::XS;
+use Try::Tiny;
+use Data::Dumper;
+use WWW::Curl::Easy;
 
 my $source_args = $#ARGV + 1;
 
@@ -18,48 +22,69 @@ if ($source_args < 1 ) {
 main($ARGV[0]);
 
 sub main {
-    print "Will it work?!\n";
-    print file(abs_path($ARGV[0]))->dir;
+    print "Loading initial file...\n";
    
-    my $file = $ARGV[0];
-    open my $info, '>>$file' or die "Couldn't Open $file: $!";
-    print $info;
+    initOutputFile();
 
-    # while the file is still open, read through each line and print.
-    while ( $info ) {
-        print $_;
-        last if eof;
+    my $file = $_[0];
+    open (FLIGHTNUMBERHNDL, $file) or die "Couldn't Open $file: $!\n";
+    print "Loaded file. Reading flight numbers...\n";
+    while ( <FLIGHTNUMBERHNDL> ) {
+        chomp;
+        my $flight_num = $_;
+        print "\tGot flight number: $flight_num\n. Fetching flight count from online...\n";
+        my $source_url = "http://projects.wsj.com/jettracker/flights.php?op=&tag=$flight_num&dc=&ac=&dds=&dde=&ads=&ade=&any_city=&p=0&sort=d";
+        my $numberOfFlightsFound = downloadAndGetFlightCount($source_url);
+        print "\tFlight count: $numberOfFlightsFound\n";
     }
 
+    close (FLIGHTNUMBERHNDL);
+
+    closeOutputFile();
     cleanUp();
-    print "Done.\n";
+    print "Done. Phil, you owe me one.\n";
+}
+
+sub initOutputFile {
+    # delete old output file. Create new one. Add initial CSV header (Tail Number, Number of Flights)
+}
+
+sub closeOutputFile {
+    # close file handle 
 }
 
 sub cleanUp {
     print "Cleaning up...";
     unlink "temp.txt";
 }
-sub downloadFile {
-    # my $file = $_[0];
+
+sub downloadAndGetFlightCount {
+    my $file = $_[0];
     # print "Downloading $file...\n";
-    # my $ff = File::Fetch->new(uri => $file);
+    my $decoded = "";
+    try {
+        my $curl = WWW::Curl::Easy->new;
+        $curl->setopt(CURLOPT_HEADER, 0);
+        $curl->setopt(CURLOPT_URL, $file);
 
-    # my $where = $ff->fetch() or die $ff->error;
+        my $response_body;
+        $curl->setopt(CURLOPT_WRITEDATA,\$response_body);
 
-    # unlink -e "temp.txt";
-    # move $ff->output_file, "temp.txt" or die "Could not move file...\n";
-}
+        my $retcode = $curl->perform;
+        my $response_code = $curl->getinfo(CURLINFO_HTTP_CODE);
 
-sub extractPageCount {
-    open FILE, "temp.txt" or die $!;
-    my $html = do { local $/; <FILE>};
-    close (FILE);
+        if ($response_code == '403') {
+            die "BAD-FLIGHT";
+        }
 
-    my $dom = Mojo::DOM->new($html);
-    my $page_count = $dom->at("div#pagination_readout")->text;
+        $decoded = JSON::XS::decode_json($response_body);
 
-    $page_count =~ s/^\w/$1/;
-    $page_count;
+        unlink -e "temp.txt";
+        return $decoded->{meta}{totalcount};
+    } catch {
+        print "\t\tTail is invalid ($_)! But moving on...\n";
+        return "Flight information invalid or not found";
+    }
 }
 
 sub processDownloadedFile {
